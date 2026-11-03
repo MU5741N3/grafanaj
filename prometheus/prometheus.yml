@@ -1,0 +1,42 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Monitoreo de Prometheus mismo
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Agentes Node Exporter (Monitoreo Pull)
+  # Agrega aquí las IPs o nombres DNS de tus máquinas cliente
+  - job_name: 'node_exporter'
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - 'localhost:9100'
+        labels:
+          instance_name: 'servidor-central'
+          environment: 'produccion'
+      # Ejemplo para máquinas remotas:
+      # - targets: ['192.168.1.50:9100']
+      #   labels:
+      #     instance_name: 'servidor-cliente-01'
+      #     environment: 'sucursal-a'
+
+  # Verificación HTTPS y fecha de expiración de certificados SSL/TLS
+  - job_name: 'blackbox_ssl'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/ssl-targets.yml
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

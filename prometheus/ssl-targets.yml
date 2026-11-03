@@ -1,0 +1,12 @@
+- targets:
+    - https://wtnode.lat
+  labels:
+    site: wtnode.lat
+- targets:
+    - https://rrcorporativo.com.mx
+  labels:
+    site: rrcorporativo.com.mx
+- targets:
+    - https://grupo-siayec.com.mx
+  labels:
+    site: grupo-siayec.com.mx
