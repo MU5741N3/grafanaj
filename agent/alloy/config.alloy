@@ -4,6 +4,9 @@
 prometheus.exporter.unix "host_metrics" {
   include_exporter_metrics = false
   disable_collectors       = ["mdadm"]
+  procfs_path              = "/host/proc"
+  sysfs_path               = "/host/sys"
+  rootfs_path              = "/rootfs"
 }
 
 prometheus.scrape "host_scrape" {

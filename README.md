@@ -1,60 +1,54 @@
-# Agente de monitoreo
+# Agente Linux de monitoreo
 
-Esta rama contiene el agente Grafana Alloy. La configuración principal está preparada para un equipo **Windows** detrás de una red corporativa: recolecta métricas del host y las envía por una conexión saliente a Prometheus en `134.122.28.193`. No abre puertos entrantes en el equipo agente.
+Esta rama contiene Grafana Alloy configurado para un **host Linux** detrás de una red corporativa. Alloy recopila métricas del host y las envía mediante una conexión saliente al Prometheus central en `134.122.28.193`. No se abren puertos entrantes en la máquina agente.
 
-> **Requisito de servidor:** el servidor central debe estar desplegado desde la rama `main` y aceptar `9090/tcp` desde la IP pública de salida de la red corporativa. Esta configuración usa HTTP sin cifrar y el receptor Remote Write de Prometheus no tiene autenticación integrada. Para producción, prefiere VPN o HTTPS con autenticación.
+> **Requisito de servidor:** el servidor debe estar desplegado desde la rama `main`. El firewall de DigitalOcean y el del Droplet deben permitir `9090/tcp` desde la IP pública de salida de la red corporativa. La configuración actual usa HTTP sin cifrar y el receptor Remote Write de Prometheus no tiene autenticación. Para producción, usa HTTPS con autenticación o una VPN.
 
-## Windows: instalación nativa de Alloy
+## Requisitos
 
-1. Verifica desde PowerShell la IP pública de salida de la red corporativa:
+- Linux con Docker Engine y el plugin Docker Compose.
+- Acceso de salida por TCP al puerto `9090` de `134.122.28.193`.
+- La IP pública de salida de la red corporativa autorizada en el Cloud Firewall de DigitalOcean y en el firewall del Droplet.
 
-   ```powershell
-   (Invoke-RestMethod https://api.ipify.org).Trim()
-   ```
+## Instalación y arranque
 
-   Esa IP debe estar permitida para `9090/tcp` en el Cloud Firewall de DigitalOcean y en el firewall del Droplet.
+1. Clona la rama `agente` y entra al repositorio:
 
-2. Clona esta rama e instala Alloy desde PowerShell:
-
-   ```powershell
+   ```bash
    git clone --branch agente https://github.com/MU5741N3/grafanaj.git
    cd grafanaj
-   winget install --id GrafanaLabs.Alloy -e
    ```
 
-3. Abre PowerShell como administrador y copia la configuración al directorio de Alloy:
+2. Edita `agent/alloy/docker-compose.agent.yml` y cambia `HOSTNAME` por un nombre único para este equipo:
 
-   ```powershell
-   Copy-Item .\agent\alloy\config.windows.alloy "$env:ProgramFiles\GrafanaLabs\Alloy\config.alloy" -Force
+   ```yaml
+   - HOSTNAME=servidor-sucursal-01
    ```
 
-   La configuración usa `COMPUTERNAME` como nombre de la máquina. Si Alloy se instaló en una ubicación distinta, copia el archivo al `config.alloy` configurado para ese servicio.
+   El destino de Remote Write ya está configurado como `http://134.122.28.193:9090/api/v1/write`.
 
-4. Reinicia el servicio Alloy desde **Servicios** (busca “Alloy”) o reinicia Windows.
+3. Inicia Alloy:
 
-5. Comprueba conectividad hacia Prometheus:
-
-   ```powershell
-   Test-NetConnection 134.122.28.193 -Port 9090
+   ```bash
+   docker compose -f agent/alloy/docker-compose.agent.yml up -d
    ```
 
-   El resultado debe mostrar `TcpTestSucceeded: True`. Si falla, solicita que la red corporativa permita tráfico **saliente** TCP al puerto `9090`, y confirma que la IP pública corporativa esté autorizada en ambos firewalls del servidor.
+4. Comprueba los logs del agente:
 
-6. En Grafana, abre **Monitoreo de Infraestructura → Estado de Máquinas y Conectividad (Host Status)**. El nombre del equipo aparecerá cuando Alloy haya comenzado a enviar métricas.
+   ```bash
+   docker compose -f agent/alloy/docker-compose.agent.yml logs -f alloy
+   ```
 
-## Linux: Alloy en Docker (alternativa)
+   Comprueba la conectividad al servidor con `curl -sS http://134.122.28.193:9090/-/healthy`. La respuesta debe ser `Prometheus Server is Ready.` Si falla la conexión, verifica la salida corporativa TCP `9090` y las reglas de firewall del Droplet.
 
-El compose y `config.alloy` de esta rama son para agentes Linux. En la carpeta `agent/alloy`, confirma el nombre del equipo en `docker-compose.agent.yml` y ejecuta:
+5. En Grafana, abre **Monitoreo de Infraestructura → Estado de Máquinas y Conectividad (Host Status)**. El equipo aparecerá cuando Alloy comience a enviar las métricas.
 
-```bash
-docker compose -f docker-compose.agent.yml up -d
-docker compose -f docker-compose.agent.yml logs -f alloy
-```
+## Métricas del host
 
-El agente también envía a `http://134.122.28.193:9090/api/v1/write`. Permite la salida TCP `9090` desde la red cliente y no abras puertos entrantes en esa máquina.
+La configuración monta `/proc`, `/sys` y la raíz del host en solo lectura y pasa sus rutas a `prometheus.exporter.unix`. Así Alloy recopila métricas del host Linux, no las del contenedor. Los datos pendientes de Remote Write se guardan en el volumen Docker `alloy_data`.
 
-## Diagnóstico
+## Seguridad
 
-- **El puerto no responde:** revisar salida TCP `9090` corporativa, la IP de origen autorizada y el Cloud Firewall del Droplet.
-- **El equipo no aparece en Grafana:** revisar que el servicio Alloy esté iniciado y su configuración apunte a `134.122.28.193`.
-- **Las métricas no se envían:** consultar el registro del servicio Alloy en el Visor de eventos de Windows o los logs del contenedor Linux.
+- El agente no expone puertos: inicia conexiones salientes hacia el servidor.
+- Restringe `9090/tcp` en el Cloud Firewall de DigitalOcean a la IP pública de salida corporativa (`<IP_CORPORATIVA>/32`); no lo abras a todo Internet.
+- El puerto `9090` no tiene autenticación y HTTP no cifra el tráfico. Usa una VPN o configura HTTPS y autenticación antes de usarlo en producción.

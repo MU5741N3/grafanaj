@@ -6,14 +6,18 @@ services:
     pid: host
     network_mode: host
     environment:
-      - HOSTNAME=maquina-cliente-01
+      - HOSTNAME=servidor-linux-01
       - CENTRAL_REMOTE_WRITE_URL=http://134.122.28.193:9090/api/v1/write
     volumes:
       - ./config.alloy:/etc/alloy/config.alloy:ro
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
+      - alloy_data:/var/lib/alloy/data
     command:
       - run
       - /etc/alloy/config.alloy
       - --storage.path=/var/lib/alloy/data
+
+volumes:
+  alloy_data:
