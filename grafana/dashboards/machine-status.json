@@ -535,7 +535,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "node_time_seconds - node_boot_time_seconds",
+          "expr": "(node_time_seconds - node_boot_time_seconds) or (time() - windows_system_boot_time_timestamp)",
           "format": "table",
           "instant": true,
           "range": false,
