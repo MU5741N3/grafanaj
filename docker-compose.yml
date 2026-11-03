@@ -13,7 +13,7 @@ services:
       - ./prometheus/ssl-targets.yml:/etc/prometheus/ssl-targets.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "127.0.0.1:9090:9090"
+      - "${PROMETHEUS_BIND_ADDRESS:-127.0.0.1}:9090:9090"
     networks:
       - monitoring
 
