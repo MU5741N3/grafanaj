@@ -7,8 +7,7 @@ services:
     network_mode: host
     environment:
       - HOSTNAME=maquina-cliente-01
-      # Cambia esta URL con la IP o dominio de tu servidor central
-      - CENTRAL_REMOTE_WRITE_URL=http://TU_IP_CENTRAL:9090/api/v1/write
+      - CENTRAL_REMOTE_WRITE_URL=http://134.122.28.193:9090/api/v1/write
     volumes:
       - ./config.alloy:/etc/alloy/config.alloy:ro
       - /proc:/host/proc:ro

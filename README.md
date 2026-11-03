@@ -1,86 +1,60 @@
-# Servidor central de monitoreo
+# Agente de monitoreo
 
-Este proyecto levanta un servidor central con **Prometheus**, **Grafana** y **Blackbox Exporter**. Recibe métricas de agentes, muestra el estado de las máquinas y vigila los certificados SSL/TLS de sitios web.
+Esta rama contiene el agente Grafana Alloy. La configuración principal está preparada para un equipo **Windows** detrás de una red corporativa: recolecta métricas del host y las envía por una conexión saliente a Prometheus en `134.122.28.193`. No abre puertos entrantes en el equipo agente.
 
-## Seguridad de red
+> **Requisito de servidor:** el servidor central debe estar desplegado desde la rama `main` y aceptar `9090/tcp` desde la IP pública de salida de la red corporativa. Esta configuración usa HTTP sin cifrar y el receptor Remote Write de Prometheus no tiene autenticación integrada. Para producción, prefiere VPN o HTTPS con autenticación.
 
-- Grafana (`3000/tcp`) y Prometheus (`9090/tcp`) se enlazan a `127.0.0.1` por defecto.
-- El receptor Remote Write de Prometheus no tiene autenticación integrada. No abras el puerto `9090` a todo Internet.
-- Para aceptar agentes remotos, permite `9090/tcp` solo desde la IP pública de salida de la red agente, usando el firewall de DigitalOcean y el del sistema.
-- El ejemplo usa HTTP sin cifrar. Para producción, usa una VPN o HTTPS con autenticación delante de Prometheus.
-- Cambia la contraseña predeterminada de Grafana (`admin`) en el primer inicio de sesión.
+## Windows: instalación nativa de Alloy
 
-## Desplegar en DigitalOcean
+1. Verifica desde PowerShell la IP pública de salida de la red corporativa:
 
-Los siguientes pasos suponen un Droplet con Ubuntu y la IP pública `134.122.28.193`.
+   ```powershell
+   (Invoke-RestMethod https://api.ipify.org).Trim()
+   ```
 
-1. En el Cloud Firewall de DigitalOcean, permite SSH (`22/tcp`) solo desde tu IP administrativa y Prometheus (`9090/tcp`) solo desde la IP pública de salida de la red agente (`<IP_AGENTE>/32`). No crees una regla para `0.0.0.0/0`; no publiques los puertos `3000` ni `9115`.
-2. Conéctate al Droplet, instala Docker y clona la rama `main`:
+   Esa IP debe estar permitida para `9090/tcp` en el Cloud Firewall de DigitalOcean y en el firewall del Droplet.
 
-   ```bash
-   ssh root@134.122.28.193
-   apt update
-   apt install -y git docker.io docker-compose-v2
-   systemctl enable --now docker
-   git clone --branch main https://github.com/MU5741N3/grafanaj.git
+2. Clona esta rama e instala Alloy desde PowerShell:
+
+   ```powershell
+   git clone --branch agente https://github.com/MU5741N3/grafanaj.git
    cd grafanaj
+   winget install --id GrafanaLabs.Alloy -e
    ```
 
-3. Configura UFW. Sustituye `<IP_AGENTE>` por la IP pública de salida real de la red donde correrá el agente:
+3. Abre PowerShell como administrador y copia la configuración al directorio de Alloy:
 
-   ```bash
-   ufw allow OpenSSH
-   ufw allow from <IP_AGENTE> to any port 9090 proto tcp
-   ufw --force enable
+   ```powershell
+   Copy-Item .\agent\alloy\config.windows.alloy "$env:ProgramFiles\GrafanaLabs\Alloy\config.alloy" -Force
    ```
 
-   Puedes obtener esa IP desde la red agente con `curl https://api.ipify.org` (Linux) o `(Invoke-RestMethod https://api.ipify.org).Trim()` (PowerShell). La regla del Cloud Firewall también es obligatoria: los puertos publicados por Docker pueden no quedar restringidos por UFW.
+   La configuración usa `COMPUTERNAME` como nombre de la máquina. Si Alloy se instaló en una ubicación distinta, copia el archivo al `config.alloy` configurado para ese servicio.
 
-4. Publica Prometheus en las interfaces del Droplet para que el agente pueda conectarse. El firewall debe limitar el acceso a la IP agente:
+4. Reinicia el servicio Alloy desde **Servicios** (busca “Alloy”) o reinicia Windows.
 
-   ```bash
-   printf 'PROMETHEUS_BIND_ADDRESS=0.0.0.0\n' > .env
-   chmod 600 .env
-   docker compose up -d
-   docker compose ps
+5. Comprueba conectividad hacia Prometheus:
+
+   ```powershell
+   Test-NetConnection 134.122.28.193 -Port 9090
    ```
 
-   Si no quieres recibir agentes remotamente, omite la creación de `.env`: Prometheus permanecerá enlazado a `127.0.0.1`.
+   El resultado debe mostrar `TcpTestSucceeded: True`. Si falla, solicita que la red corporativa permita tráfico **saliente** TCP al puerto `9090`, y confirma que la IP pública corporativa esté autorizada en ambos firewalls del servidor.
 
-## Abrir Grafana de forma segura
+6. En Grafana, abre **Monitoreo de Infraestructura → Estado de Máquinas y Conectividad (Host Status)**. El nombre del equipo aparecerá cuando Alloy haya comenzado a enviar métricas.
 
-Grafana permanece disponible solo en el Droplet. Desde tu equipo, crea un túnel SSH:
+## Linux: Alloy en Docker (alternativa)
+
+El compose y `config.alloy` de esta rama son para agentes Linux. En la carpeta `agent/alloy`, confirma el nombre del equipo en `docker-compose.agent.yml` y ejecuta:
 
 ```bash
-ssh -L 3000:127.0.0.1:3000 root@134.122.28.193
+docker compose -f docker-compose.agent.yml up -d
+docker compose -f docker-compose.agent.yml logs -f alloy
 ```
 
-Abre <http://localhost:3000> e inicia sesión con `admin` / `admin`; cambia la contraseña cuando te lo solicite. Prometheus puede consultarse localmente en el Droplet en <http://localhost:9090>.
+El agente también envía a `http://134.122.28.193:9090/api/v1/write`. Permite la salida TCP `9090` desde la red cliente y no abras puertos entrantes en esa máquina.
 
-## Dashboards y certificados SSL/TLS
+## Diagnóstico
 
-Grafana provisiona automáticamente estos dashboards en la carpeta **Monitoreo de Infraestructura**:
-
-- **Estado de Máquinas y Conectividad (Host Status)**: estado, disponibilidad e historial de los equipos.
-- **Estado de certificados SSL/TLS**: disponibilidad HTTPS, fecha de expiración y días restantes.
-
-Los sitios configurados para el dashboard SSL se encuentran en `prometheus/ssl-targets.yml`. Para agregar un dominio, añade una URL HTTPS:
-
-```yaml
-- targets:
-    - https://midominio.com
-  labels:
-    site: midominio.com
-```
-
-Prometheus vuelve a leer ese archivo automáticamente cada 30 segundos. El chequeo HTTPS se ejecuta cada 15 segundos.
-
-## Verificar la recepción de un agente
-
-En Grafana, abre el dashboard de máquinas. También puedes comprobar en Prometheus que se reciben métricas mediante la consulta:
-
-```promql
-up{job="node_exporter"}
-```
-
-El agente debe configurarse desde la rama `agente` del repositorio. Sigue las instrucciones de su README para Windows; el agente inicia conexiones salientes y no requiere puertos entrantes en la red corporativa.
+- **El puerto no responde:** revisar salida TCP `9090` corporativa, la IP de origen autorizada y el Cloud Firewall del Droplet.
+- **El equipo no aparece en Grafana:** revisar que el servicio Alloy esté iniciado y su configuración apunte a `134.122.28.193`.
+- **Las métricas no se envían:** consultar el registro del servicio Alloy en el Visor de eventos de Windows o los logs del contenedor Linux.

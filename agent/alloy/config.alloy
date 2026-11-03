@@ -28,16 +28,21 @@ prometheus.relabel "host_labels" {
   }
 
   rule {
+    target_label = "instance"
+    replacement  = coalesce(sys.env("HOSTNAME"), "maquina-cliente")
+  }
+
+  rule {
     target_label = "instance_name"
     replacement  = coalesce(sys.env("HOSTNAME"), "maquina-cliente")
   }
 }
 
 // Envío remoto hacia la central
-// Cambiar 'localhost:9090' por la dirección o IP pública/VPN de tu central
+// El agente envía métricas al servidor central.
 prometheus.remote_write "central" {
   endpoint {
-    url = coalesce(sys.env("CENTRAL_REMOTE_WRITE_URL"), "http://localhost:9090/api/v1/write")
+    url = coalesce(sys.env("CENTRAL_REMOTE_WRITE_URL"), "http://134.122.28.193:9090/api/v1/write")
 
     // Si tu central requiere autenticación básica (opcional):
     // basic_auth {

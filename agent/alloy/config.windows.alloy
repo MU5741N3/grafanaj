@@ -1,0 +1,38 @@
+prometheus.exporter.windows "host_metrics" {}
+
+prometheus.scrape "host_scrape" {
+  targets         = prometheus.exporter.windows.host_metrics.targets
+  forward_to      = [prometheus.relabel.host_labels.receiver]
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+}
+
+prometheus.relabel "host_labels" {
+  forward_to = [prometheus.remote_write.central.receiver]
+
+  rule {
+    target_label = "job"
+    replacement  = "node_exporter"
+  }
+
+  rule {
+    target_label = "environment"
+    replacement  = "produccion"
+  }
+
+  rule {
+    target_label = "instance"
+    replacement  = coalesce(sys.env("COMPUTERNAME"), "equipo-windows")
+  }
+
+  rule {
+    target_label = "instance_name"
+    replacement  = coalesce(sys.env("COMPUTERNAME"), "equipo-windows")
+  }
+}
+
+prometheus.remote_write "central" {
+  endpoint {
+    url = "http://134.122.28.193:9090/api/v1/write"
+  }
+}
